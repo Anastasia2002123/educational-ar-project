@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Документація Проєкту</title>
+    <script src="../libs/marked.umd.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            margin: 20px auto;
+            text-align: left;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: #4a90e2;
+            margin-top: 1.5em;
+            margin-bottom: 0.8em;
+        }
+        pre {
+            background-color: #e0e0e0;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        /* Стилізація кнопок для навігації */
+        .navigation-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        .nav-btn {
+            background-color: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+        }
+        .nav-btn:hover {
+            background-color: #5a67d8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navigation-buttons">
+            <a href="../index.html" class="nav-btn">На головну</a>
+        </div>
+        <div id="markdown-content">Завантаження документації...</div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const markdownContentDiv = document.getElementById('markdown-content');
+            const urlParams = new URLSearchParams(window.location.search);
+            const doc = urlParams.get('doc'); // Отримуємо ім'я файлу з параметрів URL
+
+            if (doc) {
+                try {
+                    // Завантажуємо Markdown-файл
+                    const response = await fetch(`${doc}.md`); // doc буде, наприклад, 'presentation'
+                    if (!response.ok) {
+                        throw new Error(`Не вдалося завантажити ${doc}.md: ${response.statusText}`);
+                    }
+                    const markdownText = await response.text();
+
+                    // Рендеримо Markdown у HTML за допомогою marked.js
+                    // Використовуємо marked.parse для рендерингу
+                    markdownContentDiv.innerHTML = marked.parse(markdownText);
+                    document.title = `Документація: ${doc.charAt(0).toUpperCase() + doc.slice(1)}`; // Оновлюємо заголовок сторінки
+                } catch (error) {
+                    markdownContentDiv.innerHTML = `<p style="color: red;">Помилка завантаження документації: ${error.message}</p>`;
+                    console.error("Error loading Markdown file:", error);
+                }
+            } else {
+                markdownContentDiv.innerHTML = '<p>Документ не вказано. Будь ласка, оберіть документ з головної сторінки.</p>';
+            }
+        });
+    </script>
+</body>
+</html>

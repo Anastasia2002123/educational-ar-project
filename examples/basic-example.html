@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Базовий Приклад - Графіки функцій у 3D</title>
+    <script src="../libs/aframe/aframe.min.js"></script>
+    <script src="../libs/mathjs/math.min.js"></script>
+    <script type="module" src="../src/utils/math-parser.js"></script>
+    <script type="module" src="../src/utils/geometry-generator.js"></script>
+    <script type="module" src="../src/components/function-plotter.js"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+    <a-scene background="color: #ECECEC" inspector-toggle="enabled: true">
+        <a-entity camera look-controls wasd-controls position="0 1.6 5"></a-entity>
+
+        <a-entity light="type: ambient; color: #FFF; intensity: 0.8"></a-entity>
+        <a-entity light="type: directional; color: #FFF; intensity: 0.6; shadowCameraNear: 0.5; shadowCameraFar: 500; shadowCameraLeft: -5; shadowCameraRight: 5; shadowCameraTop: 5; shadowCameraBottom: -5;" position="-1 2 1"></a-entity>
+        
+        <a-grid color="#CCC"></a-grid>
+
+        <a-entity axis-helpers="size: 5"></a-entity>
+
+        <a-entity function-plotter="
+            type: curve;
+            formula: x*x;
+            rangeStart: -2;
+            rangeEnd: 2;
+            segments: 50;
+            color: #FF69B4;"
+            position="0 1 -2"
+            shadow="receive: true; cast: true;">
+        </a-entity>
+
+        <a-entity function-plotter="
+            type: curve;
+            formula: 3*sin(t);
+            formulaY: 3*cos(t);
+            formulaZ: t;
+            rangeStart: -5;
+            rangeEnd: 5;
+            segments: 100;
+            color: #4CAF50;"
+            position="-3 1 -2"
+            rotation="0 0 0"
+            shadow="receive: true; cast: true;">
+        </a-entity>
+
+        <a-entity function-plotter="
+            type: surface;
+            formula: sin(x)*cos(y);
+            rangeStart: -5;
+            rangeEnd: 5;
+            rangeYStart: -5;
+            rangeYEnd: 5;
+            segments: 40;
+            segmentsY: 40;
+            color: #2196F3;"
+            position="3 1 -2"
+            shadow="receive: true; cast: true;">
+        </a-entity>
+
+        <a-entity function-plotter="
+            type: surface;
+            formula: x*x - y*y;
+            rangeStart: -3;
+            rangeEnd: 3;
+            rangeYStart: -3;
+            rangeYEnd: 3;
+            segments: 30;
+            segmentsY: 30;
+            color: #FFC107;
+            wireframe: true;"
+            position="0 4 -2"
+            shadow="receive: true; cast: true;">
+        </a-entity>
+
+        <script>
+            AFRAME.registerComponent('axis-helpers', {
+                schema: {
+                    size: { type: 'number', default: 1 }
+                },
+                init: function () {
+                    const data = this.data;
+                    const el = this.el;
+
+                    // X-axis (Red)
+                    const xAxis = document.createElement('a-entity');
+                    xAxis.setAttribute('geometry', `primitive: cylinder; radius: 0.01; height: ${data.size}`);
+                    xAxis.setAttribute('material', 'color: red');
+                    xAxis.setAttribute('position', `${data.size / 2} 0 0`);
+                    xAxis.setAttribute('rotation', '0 0 -90');
+                    el.appendChild(xAxis);
+                    const xLabel = document.createElement('a-text');
+                    xLabel.setAttribute('value', 'X');
+                    xLabel.setAttribute('color', 'red');
+                    xLabel.setAttribute('position', `${data.size + 0.2} 0 0`);
+                    xLabel.setAttribute('scale', '0.2 0.2 0.2');
+                    el.appendChild(xLabel);
+
+
+                    // Y-axis (Green)
+                    const yAxis = document.createElement('a-entity');
+                    yAxis.setAttribute('geometry', `primitive: cylinder; radius: 0.01; height: ${data.size}`);
+                    yAxis.setAttribute('material', 'color: green');
+                    yAxis.setAttribute('position', `0 ${data.size / 2} 0`);
+                    el.appendChild(yAxis);
+                    const yLabel = document.createElement('a-text');
+                    yLabel.setAttribute('value', 'Y');
+                    yLabel.setAttribute('color', 'green');
+                    yLabel.setAttribute('position', `0 ${data.size + 0.2} 0`);
+                    yLabel.setAttribute('scale', '0.2 0.2 0.2');
+                    el.appendChild(yLabel);
+
+                    // Z-axis (Blue)
+                    const zAxis = document.createElement('a-entity');
+                    zAxis.setAttribute('geometry', `primitive: cylinder; radius: 0.01; height: ${data.size}`);
+                    zAxis.setAttribute('material', 'color: blue');
+                    zAxis.setAttribute('position', `0 0 ${data.size / 2}`);
+                    zAxis.setAttribute('rotation', '90 0 0');
+                    el.appendChild(zAxis);
+                    const zLabel = document.createElement('a-text');
+                    zLabel.setAttribute('value', 'Z');
+                    zLabel.setAttribute('color', 'blue');
+                    zLabel.setAttribute('position', `0 0 ${data.size + 0.2}`);
+                    zLabel.setAttribute('scale', '0.2 0.2 0.2');
+                    el.appendChild(zLabel);
+                }
+            });
+        </script>
+    </a-scene>
+</body>
+</html>

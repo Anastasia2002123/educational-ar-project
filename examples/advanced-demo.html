@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Розширене демо - Графіки функцій у 3D</title>
+    <script src="../libs/aframe/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+    <script type="module" src="../src/utils/math-parser.js"></script>
+    <script type="module" src="../src/utils/geometry-generator.js"></script>
+    <script type="module" src="../src/components/function-plotter.js"></script>
+    <script type="module" src="../src/ml/handwriting-recognizer.js"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-width: 350px;
+            max-height: calc(100vh - 20px);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .control-group h3 {
+            margin-top: 0;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="text"], input[type="number"], select {
+            width: calc(100% - 12px);
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin-top: 5px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s ease;
+            width: 100%;
+        }
+        button:hover { background: #5a67d8; }
+        #ar-button {
+            background: #28a745;
+            margin-top: 15px;
+        }
+        #ar-button:hover { background: #218838; }
+        #message-box {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1001;
+            display: none;
+        }
+        #canvas-ml {
+            border: 1px solid #333;
+            background-color: white;
+            cursor: crosshair;
+            margin-bottom: 10px;
+            display: block; /* Забезпечуємо, що canvas займає весь доступний простір */
+            touch-action: none; /* Запобігає прокручуванню на мобільних */
+        }
+        .ml-controls {
+            margin-top: 15px;
+            border-top: 1px dashed #ccc;
+            padding-top: 10px;
+        }
+        .ml-controls button {
+            margin-top: 5px;
+            background: #ffa500;
+        }
+        .ml-controls button:hover {
+            background: #e69500;
+        }
+        #recognizedFormula {
+            font-weight: bold;
+            color: #333;
+            margin-top: 5px;
+            background: #eee;
+            padding: 8px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <a-scene embedded vr-mode-ui="enabled: true" ar-hit-test="enabled: false">
+        <a-entity camera look-controls wasd-controls position="0 1.6 5"></a-entity>
+
+        <a-entity light="type: ambient; color: #FFF; intensity: 0.8"></a-entity>
+        <a-entity light="type: directional; color: #FFF; intensity: 0.6; castShadow: true" position="-1 2 1"></a-entity>
+        
+        <a-grid color="#CCC"></a-grid>
+
+        <a-entity axis-helpers="size: 5"></a-entity>
+
+        <a-entity id="dynamic-graph-entity"
+                  function-plotter="
+                      type: curve;
+                      formula: x*x;
+                      rangeStart: -2;
+                      rangeEnd: 2;
+                      segments: 50;
+                      color: #FF69B4;"
+                  position="0 1 -2"
+                  shadow="receive: true; cast: true;">
+        </a-entity>
+
+        <a-marker-camera
+            type="pattern"
+            patternUrl="../assets/markers/pattern-marker.patt"
+            id="ar-marker-entity"
+            emits-ar-event="true"
+            visible="false">
+            <a-entity id="ar-graph-anchor" position="0 0 0" scale="0.1 0.1 0.1">
+                <a-entity id="ar-dynamic-graph-entity"
+                          function-plotter="
+                              type: curve;
+                              formula: x*x;
+                              rangeStart: -2;
+                              rangeEnd: 2;
+                              segments: 50;
+                              color: #FF69B4;"
+                          position="0 0 0" rotation="-90 0 0" scale="10 10 10" shadow="receive: true; cast: true;">
+                </a-entity>
+                <a-entity axis-helpers="size: 0.5"></a-entity>
+            </a-entity>
+        </a-marker-camera>
+
+        <script>
+            AFRAME.registerComponent('axis-helpers', {
+                schema: {
+                    size: { type: 'number', default: 1 }
+                },
+                init: function () {
+                    const data = this.data;
+                    const el = this.el;
+
+                    // X-axis (Red)
+                    const xAxis = document.createElement('a-entity');
+                    xAxis.setAttribute('geometry', `primitive: cylinder; radius: 0.01; height: ${data.size}`);
+                    xAxis.setAttribute('material', 'color: red');
+                    xAxis.setAttribute('position', `${data.size / 2} 0 0`);
+                    xAxis.setAttribute('rotation', '0 0 -90');
+                    el.appendChild(xAxis);
+                    const xLabel = document.createElement('a-text');
+                    xLabel.setAttribute('value', 'X');
+                    xLabel.setAttribute('color', 'red');
+                    xLabel.setAttribute('position', `${data.size + 0.2} 0 0`);
+                    xLabel.setAttribute('scale', '0.2 0.2 0.2');
+                    el.appendChild(xLabel);
+
+
+                    // Y-axis (Green)
+                    const yAxis = document.createElement('a-entity');
+                    yAxis.setAttribute('geometry', `primitive: cylinder; radius: 0.01; height: ${data.size}`);
+                    yAxis.setAttribute('material', 'color: green');
+                    yAxis.setAttribute('position', `0 ${data.size / 2} 0`);
+                    el.appendChild(yAxis);
+                    const yLabel = document.createElement('a-text');
+                    yLabel.setAttribute('value', 'Y');
+                    yLabel.setAttribute('color', 'green');
+                    yLabel.setAttribute('position', `0 ${data.size + 0.2} 0`);
+                    yLabel.setAttribute('scale', '0.2 0.2 0.2');
+                    el.appendChild(yLabel);
+
+                    // Z-axis (Blue)
+                    const zAxis = document.createElement('a-entity');
+                    zAxis.setAttribute('geometry', `primitive: cylinder; radius: 0.01; height: ${data.size}`);
+                    zAxis.setAttribute('material', 'color: blue');
+                    zAxis.setAttribute('position', `0 0 ${data.size / 2}`);
+                    zAxis.setAttribute('rotation', '90 0 0');
+                    el.appendChild(zAxis);
+                    const zLabel = document.createElement('a-text');
+                    zLabel.setAttribute('value', 'Z');
+                    zLabel.setAttribute('color', 'blue');
+                    zLabel.setAttribute('position', `0 0 ${data.size + 0.2}`);
+                    zLabel.setAttribute('scale', '0.2 0.2 0.2');
+                    el.appendChild(zLabel);
+                }
+            });
+
+            // MindAR Emits AR Event (custom component to simply emit an event when marker is found)
+            AFRAME.registerComponent('emits-ar-event', {
+                init: function () {
+                    const el = this.el;
+                    el.addEventListener('markerFound', () => {
+                        console.log('AR Marker Found!');
+                        document.querySelector('#message-box').textContent = 'Маркер знайдено! Графік відображено.';
+                        document.querySelector('#message-box').style.display = 'block';
+                        setTimeout(() => { document.querySelector('#message-box').style.display = 'none'; }, 3000);
+                    });
+                    el.addEventListener('markerLost', () => {
+                        console.log('AR Marker Lost!');
+                        document.querySelector('#message-box').textContent = 'Маркер втрачено.';
+                        document.querySelector('#message-box').style.display = 'block';
+                        setTimeout(() => { document.querySelector('#message-box').style.display = 'none'; }, 3000);
+                    });
+                }
+            });
+        </script>
+    </a-scene>
+
+    <div id="controls">
+        <h2>Налаштування графіків</h2>
+
+        <div class="control-group">
+            <h3>Вибір типу</h3>
+            <label for="graphType">Тип графіка:</label>
+            <select id="graphType">
+                <option value="curve">Крива (y=f(x) або параметрична)</option>
+                <option value="surface">Поверхня (z=f(x,y))</option>
+            </select>
+        </div>
+
+        <div class="control-group" id="curve-controls">
+            <h3>Налаштування кривої</h3>
+            <label for="formula">Формула (y=f(x) або X для параметричної):</label>
+            <input type="text" id="formula" value="x*x" placeholder="Наприклад: x*x, sin(x)">
+
+            <div id="parametric-formulas" style="display: none;">
+                <label for="formulaY">Формула Y (для параметричної):</label>
+                <input type="text" id="formulaY" value="y" placeholder="Наприклад: cos(t)">
+                <label for="formulaZ">Формула Z (для параметричної):</label>
+                <input type="text" id="formulaZ" value="0" placeholder="Наприклад: t/5">
+            </div>
+
+            <label for="rangeStart">Діапазон початок:</label>
+            <input type="number" id="rangeStart" value="-5" step="0.1">
+            <label for="rangeEnd">Діапазон кінець:</label>
+            <input type="number" id="rangeEnd" value="5" step="0.1">
+            <label for="segments">Сегменти:</label>
+            <input type="number" id="segments" value="100" min="10" max="500">
+        </div>
+
+        <div class="control-group" id="surface-controls" style="display: none;">
+            <h3>Налаштування поверхні</h3>
+            <label for="surfaceFormula">Формула (z=f(x,y)):</label>
+            <input type="text" id="surfaceFormula" value="sin(x*y)" placeholder="Наприклад: sin(x*y)">
+            <label for="surfaceXMin">X Мін:</label>
+            <input type="number" id="surfaceXMin" value="-5" step="0.1">
+            <label for="surfaceXMax">X Макс:</label>
+            <input type="number" id="surfaceXMax" value="5" step="0.1">
+            <label for="surfaceYMin">Y Мін:</label>
+            <input type="number" id="surfaceYMin" value="-5" step="0.1">
+            <label for="surfaceYMax">Y Макс:</label>
+            <input type="number" id="surfaceYMax" value="5" step="0.1">
+            <label for="surfaceSegmentsX">Сегменти X:</label>
+            <input type="number" id="surfaceSegmentsX" value="50" min="10" max="200">
+            <label for="surfaceSegmentsY">Сегменти Y:</label>
+            <input type="number" id="surfaceSegmentsY" value="50" min="10" max="200">
+            <label for="wireframe">Каркас:</label>
+            <input type="checkbox" id="wireframe">
+        </div>
+
+        <div class="control-group">
+            <h3>Загальні налаштування</h3>
+            <label for="graphColor">Колір графіка:</label>
+            <input type="color" id="graphColor" value="#FF69B4">
+            <button id="updateGraphBtn">Оновити графік</button>
+        </div>
+
+        <button id="toggleARBtn" style="display: none;">Увімкнути/Вимкнути AR</button>
+
+        <div class="control-group ml-controls" id="ml-section" style="display: none;">
+            <h3>🤖 Розпізнавання рукопису</h3>
+            <label>Намалюйте формулу:</label>
+            <canvas id="canvas-ml" width="200" height="100"></canvas>
+            <button id="clearCanvasBtn">Очистити</button>
+            <button id="recognizeBtn">Розпізнати формулу</button>
+            <p>Розпізнано: <span id="recognizedFormula">...</span></p>
+            <button id="applyRecognizedBtn">Застосувати розпізнану</button>
+        </div>
+    </div>
+
+    <div id="message-box"></div>
+
+    <script type="module">
+        import { loadMlModel, recognizeHandwriting } from '../src/ml/handwriting-recognizer.js';
+        import { validateExpression } from '../src/utils/math-parser.js';
+
+        // Визначення типу проєкту та налаштування інтерфейсу (як у index.html)
+        const projectType = 'AR_MARKER'; // 'VR', 'AR_MARKER', 'AR_MARKERLESS'
+        const isCSStudent = true; // true для студентів інформатики
+
+        const dynamicGraphEntity = document.querySelector('#dynamic-graph-entity');
+        const arDynamicGraphEntity = document.querySelector('#ar-dynamic-graph-entity');
+        const arMarkerEntity = document.querySelector('#ar-marker-entity');
+        const arGraphAnchor = document.querySelector('#ar-graph-anchor');
+
+        const graphTypeSelect = document.getElementById('graphType');
+        const curveControls = document.getElementById('curve-controls');
+        const surfaceControls = document.getElementById('surface-controls');
+        const parametricFormulas = document.getElementById('parametric-formulas');
+
+        const formulaInput = document.getElementById('formula');
+        const formulaYInput = document.getElementById('formulaY');
+        const formulaZInput = document.getElementById('formulaZ');
+        const rangeStartInput = document.getElementById('rangeStart');
+        const rangeEndInput = document.getElementById('rangeEnd');
+        const segmentsInput = document.getElementById('segments');
+        const graphColorInput = document.getElementById('graphColor');
+        const wireframeCheckbox = document.getElementById('wireframe');
+
+        const surfaceFormulaInput = document.getElementById('surfaceFormula');
+        const surfaceXMinInput = document.getElementById('surfaceXMin');
+        const surfaceXMaxInput = document.getElementById('surfaceXMax');
+        const surfaceYMinInput = document.getElementById('surfaceYMin');
+        const surfaceYMaxInput = document.getElementById('surfaceYMax');
+        const surfaceSegmentsXInput = document.getElementById('surfaceSegmentsX');
+        const surfaceSegmentsYInput = document.getElementById('surfaceSegmentsY');
+
+        const updateGraphBtn = document.getElementById('updateGraphBtn');
+        const toggleARBtn = document.getElementById('toggleARBtn');
+        const messageBox = document.getElementById('message-box');
+
+        // ML Elements
+        const mlSection = document.getElementById('ml-section');
+        const canvasMl = document.getElementById('canvas-ml');
+        const clearCanvasBtn = document.getElementById('clearCanvasBtn');
+        const recognizeBtn = document.getElementById('recognizeBtn');
+        const recognizedFormulaSpan = document.getElementById('recognizedFormula');
+        const applyRecognizedBtn = document.getElementById('applyRecognizedBtn');
+        let ctxMl;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        // Ініціалізація та оновлення графіка
+        function updateGraph() {
+            const type = graphTypeSelect.value;
+            const color = graphColorInput.value;
+            let attrs = {
+                color: color,
+                // Позиція графіка за замовчуванням
+                position: '0 1 -2', // Для VR режиму
+            };
+
+            // Перевірка на валідність формул
+            let isValid = true;
+            if (type === 'curve') {
+                const formula = formulaInput.value;
+                const formulaY = formulaYInput.value;
+                const formulaZ = formulaZInput.value;
+                const rangeStart = parseFloat(rangeStartInput.value);
+                const rangeEnd = parseFloat(rangeEndInput.value);
+                const segments = parseInt(segmentsInput.value);
+
+                if (!validateExpression(formula) || !validateExpression(formulaY) || !validateExpression(formulaZ)) {
+                    showMessage("Помилка: Некоректна формула для кривої.", 'error');
+                    isValid = false;
+                }
+                if (isNaN(rangeStart) || isNaN(rangeEnd) || isNaN(segments) || rangeStart >= rangeEnd || segments < 10) {
+                     showMessage("Помилка: Перевірте діапазони або сегменти для кривої.", 'error');
+                     isValid = false;
+                }
+
+                attrs = {
+                    ...attrs,
+                    type: type,
+                    formula: formula,
+                    formulaY: formulaY,
+                    formulaZ: formulaZ,
+                    rangeStart: rangeStart,
+                    rangeEnd: rangeEnd,
+                    segments: segments
+                };
+            } else if (type === 'surface') {
+                const formula = surfaceFormulaInput.value;
+                const xMin = parseFloat(surfaceXMinInput.value);
+                const xMax = parseFloat(surfaceXMaxInput.value);
+                const yMin = parseFloat(surfaceYMinInput.value);
+                const yMax = parseFloat(surfaceYMaxInput.value);
+                const xSegments = parseInt(surfaceSegmentsXInput.value);
+                const ySegments = parseInt(surfaceSegmentsYInput.value);
+                const wireframe = wireframeCheckbox.checked;
+
+                if (!validateExpression(formula)) {
+                    showMessage("Помилка: Некоректна формула для поверхні.", 'error');
+                    isValid = false;
+                }
+                if (isNaN(xMin) || isNaN(xMax) || isNaN(yMin) || isNaN(yMax) || isNaN(xSegments) || isNaN(ySegments) ||
+                    xMin >= xMax || yMin >= yMax || xSegments < 10 || ySegments < 10) {
+                    showMessage("Помилка: Перевірте діапазони або сегменти для поверхні.", 'error');
+                    isValid = false;
+                }
+
+                attrs = {
+                    ...attrs,
+                    type: type,
+                    formula: formula,
+                    rangeStart: xMin,
+                    rangeEnd: xMax,
+                    rangeYStart: yMin,
+                    rangeYEnd: yMax,
+                    segments: xSegments,
+                    segmentsY: ySegments,
+                    wireframe: wireframe
+                };
+            }
+
+            if (isValid) {
+                // Оновлюємо атрибути для обох сутностей (VR та AR)
+                Object.keys(attrs).forEach(key => {
+                    dynamicGraphEntity.setAttribute('function-plotter', key, attrs[key]);
+                    arDynamicGraphEntity.setAttribute('function-plotter', key, attrs[key]);
+                });
+                showMessage("Графік оновлено!", 'success');
+            }
+        }
+
+        // Показати/приховати елементи керування залежно від типу графіка
+        function toggleGraphTypeControls() {
+            const type = graphTypeSelect.value;
+            if (type === 'curve') {
+                curveControls.style.display = 'block';
+                surfaceControls.style.display = 'none';
+                toggleParametricInputs(); // Перевіряємо, чи потрібні параметричні поля
+            } else { // 'surface'
+                curveControls.style.display = 'none';
+                surfaceControls.style.display = 'block';
+                parametricFormulas.style.display = 'none'; // Заховати для поверхні
+            }
+        }
+
+        // Показати/приховати поля для параметричних функцій
+        function toggleParametricInputs() {
+            const formulaYValue = formulaYInput.value.trim().toLowerCase();
+            const formulaZValue = formulaZInput.value.trim().toLowerCase();
+
+            // Якщо formulaY або formulaZ не є стандартними 'y'/'0', то припускаємо параметричну
+            if (formulaYValue !== 'y' || formulaZValue !== '0') {
+                 parametricFormulas.style.display = 'block';
+                 // Формула X також потрібна бути видимою для параметричних
+                 formulaInput.labels[0].textContent = 'Формула X (для параметричної):';
+            } else {
+                 parametricFormulas.style.display = 'none';
+                 formulaInput.labels[0].textContent = 'Формула (y=f(x)):';
+            }
+        }
+
+        // Перемикання режимів AR/VR
+        let isARMode = false;
+        function toggleARMode() {
+            const scene = document.querySelector('a-scene');
+            if (isARMode) {
+                // Вийти з AR режиму
+                scene.exitAR();
+                isARMode = false;
+                toggleARBtn.textContent = 'Увімкнути AR';
+                dynamicGraphEntity.setAttribute('visible', true); // Показати VR графік
+                arMarkerEntity.setAttribute('visible', false); // Приховати AR маркер
+                arGraphAnchor.setAttribute('visible', false); // Приховати AR графік
+                showMessage("Ви вийшли з AR режиму.", 'info');
+            } else {
+                // Увійти в AR режим
+                if (projectType === 'AR_MARKER') {
+                    scene.setAttribute('mindar-image', 'imageTargetSrc: ../assets/markers/targets.mind; filterMinCF: 0.1; filterBeta: 100;');
+                    scene.enterAR().then(() => {
+                        isARMode = true;
+                        toggleARBtn.textContent = 'Вимкнути AR';
+                        dynamicGraphEntity.setAttribute('visible', false); // Приховати VR графік
+                        arMarkerEntity.setAttribute('visible', true); // Показати AR маркер
+                        arGraphAnchor.setAttribute('visible', true); // Показати AR графік
+                        showMessage("AR режим активовано! Знайдіть маркер.", 'info');
+                    }).catch(err => {
+                        console.error("Помилка входу в AR:", err);
+                        showMessage("Помилка запуску AR: " + err.message, 'error');
+                    });
+                } else {
+                    // Для безмаркерного AR або VR, просто зміна режиму A-Frame
+                    scene.enterAR().then(() => {
+                        isARMode = true;
+                        toggleARBtn.textContent = 'Вимкнути AR';
+                        dynamicGraphEntity.setAttribute('visible', false);
+                        arGraphAnchor.setAttribute('visible', true); // Показати AR графік (або спеціально для безмаркерного AR)
+                        showMessage("AR режим активовано! Скануйте площину.", 'info');
+                    }).catch(err => {
+                        console.error("Помилка входу в AR:", err);
+                        showMessage("Помилка запуску AR: " + err.message, 'error');
+                    });
+                }
+            }
+        }
+
+
+        // Функція для показу повідомлень
+        function showMessage(msg, type = 'info') {
+            messageBox.textContent = msg;
+            messageBox.style.display = 'block';
+            messageBox.style.backgroundColor = type === 'error' ? 'rgba(255, 0, 0, 0.7)' : (type === 'success' ? 'rgba(40, 167, 69, 0.7)' : 'rgba(0, 0, 0, 0.7)');
+            clearTimeout(messageBox.timeout);
+            messageBox.timeout = setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 5000);
+        }
+
+        // ----------- ML Canvas Drawing Logic -----------
+        function setupCanvasDrawing() {
+            if (!canvasMl) return;
+
+            ctxMl = canvasMl.getContext('2d');
+            ctxMl.lineWidth = 5;
+            ctxMl.lineCap = 'round';
+            ctxMl.strokeStyle = 'black';
+
+            clearCanvas(); // Очистити канвас при завантаженні
+
+            canvasMl.addEventListener('mousedown', (e) => {
+                isDrawing = true;
+                [lastX, lastY] = [e.offsetX, e.offsetY];
+            });
+
+            canvasMl.addEventListener('mousemove', draw);
+            canvasMl.addEventListener('mouseup', () => isDrawing = false);
+            canvasMl.addEventListener('mouseout', () => isDrawing = false);
+
+            // For touch devices
+            canvasMl.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Запобігаємо прокручуванню сторінки
+                isDrawing = true;
+                const rect = canvasMl.getBoundingClientRect();
+                [lastX, lastY] = [e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top];
+            });
+
+            canvasMl.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                draw(e.touches[0]);
+            });
+
+            canvasMl.addEventListener('touchend', () => isDrawing = false);
+            canvasMl.addEventListener('touchcancel', () => isDrawing = false);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            ctxMl.beginPath();
+            ctxMl.moveTo(lastX, lastY);
+            const clientX = e.offsetX !== undefined ? e.offsetX : (e.clientX - canvasMl.getBoundingClientRect().left);
+            const clientY = e.offsetY !== undefined ? e.offsetY : (e.clientY - canvasMl.getBoundingClientRect().top);
+            ctxMl.lineTo(clientX, clientY);
+            ctxMl.stroke();
+            [lastX, lastY] = [clientX, clientY];
+        }
+
+        function clearCanvas() {
+            if (ctxMl) {
+                ctxMl.clearRect(0, 0, canvasMl.width, canvasMl.height);
+                recognizedFormulaSpan.textContent = '...';
+            }
+        }
+        // ----------- End ML Canvas Drawing Logic -----------
+
+
+        // ----------- Event Listeners -----------
+        document.addEventListener('DOMContentLoaded', () => {
+            // Залежно від projectType, ініціалізуємо AR або VR
+            const scene = document.querySelector('a-scene');
+
+            if (projectType === 'VR') {
+                scene.setAttribute('vr-mode-ui', 'enabled: true');
+                toggleARBtn.style.display = 'none'; // Немає AR кнопки для VR
+            } else if (projectType === 'AR_MARKER' || projectType === 'AR_MARKERLESS') {
+                toggleARBtn.style.display = 'block';
+                // Вимикаємо стандартний VR UI для AR
+                scene.setAttribute('vr-mode-ui', 'enabled: false');
+                // Приховуємо VR графік спочатку, поки не увімкнемо AR
+                dynamicGraphEntity.setAttribute('visible', false);
+                arMarkerEntity.setAttribute('visible', false);
+                arGraphAnchor.setAttribute('visible', false);
+            }
+
+            // Налаштування ML секції
+            if (isCSStudent) {
+                mlSection.style.display = 'block';
+                loadMlModel().then(() => showMessage("ML Модель готова до розпізнавання.", 'info'));
+                setupCanvasDrawing();
+            } else {
+                mlSection.style.display = 'none';
+            }
+
+            // Initial setup for graph type controls
+            toggleGraphTypeControls();
+            toggleParametricInputs(); // initial check for parametric
+
+            // Event Listeners
+            graphTypeSelect.addEventListener('change', toggleGraphTypeControls);
+            formulaInput.addEventListener('input', toggleParametricInputs);
+            formulaYInput.addEventListener('input', toggleParametricInputs);
+            formulaZInput.addEventListener('input', toggleParametricInputs);
+
+            updateGraphBtn.addEventListener('click', updateGraph);
+            toggleARBtn.addEventListener('click', toggleARMode);
+
+            // ML Event Listeners
+            clearCanvasBtn.addEventListener('click', clearCanvas);
+            recognizeBtn.addEventListener('click', async () => {
+                recognizedFormulaSpan.textContent = 'Розпізнаю...';
+                const formula = await recognizeHandwriting(canvasMl);
+                recognizedFormulaSpan.textContent = formula;
+            });
+            applyRecognizedBtn.addEventListener('click', () => {
+                const recognized = recognizedFormulaSpan.textContent;
+                if (recognized && recognized !== '...') {
+                    if (graphTypeSelect.value === 'curve') {
+                        formulaInput.value = recognized;
+                        formulaYInput.value = 'y'; // Скидаємо параметричні
+                        formulaZInput.value = '0';
+                    } else if (graphTypeSelect.value === 'surface') {
+                        surfaceFormulaInput.value = recognized;
+                    }
+                    toggleParametricInputs(); // Оновити UI
+                    updateGraph();
+                    showMessage(`Формулу "${recognized}" застосовано!`, 'success');
+                } else {
+                    showMessage("Немає розпізнаної формули для застосування.", 'warning');
+                }
+            });
+
+            // Initial graph update
+            updateGraph();
+        });
+    </script>
+</body>
+</html>
